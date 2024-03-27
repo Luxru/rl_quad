@@ -232,8 +232,8 @@ void Simulator::run() {
 
 	while ( ros::ok() ) {
 		ros::spinOnce();
-		//not response in 200 ms
-        bool hover_flag = std::chrono::duration_cast<std::chrono::milliseconds>((std::chrono::steady_clock::now() - last_cmd_time) ) > std::chrono::milliseconds(200);
+		//not response in 500 ms
+        bool hover_flag = std::chrono::duration_cast<std::chrono::milliseconds>((std::chrono::steady_clock::now() - last_cmd_time) ) > std::chrono::milliseconds(500);
 		// check whether there has a external input
 		if (hover_flag) {
 			// enter hover mode

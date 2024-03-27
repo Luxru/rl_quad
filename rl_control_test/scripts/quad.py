@@ -23,8 +23,10 @@ class Hpolys:
     def __init__(self,hpolys:List[Polytope]) -> None:
         self.__hpolys = []
         for p in hpolys:
+            # 对与一系列多面体中的每一个多面体p
             hss = []
             for hs in p.halfspaces:
+                # 对p中的每一个超平面hs
                 hs:Halfspace
                 hss.append([hs.h0,hs.h1,hs.h2,hs.h3])
             self.__hpolys.append(hss)
@@ -40,8 +42,9 @@ class Hpolys:
 
     def __len__(self):
         return len(self.__hpolys)
-    #获得点x y z在一个凸多面体内距离多个平面的平均距离（依据一个方向VX VY VZ）
+    
     def get_avg_dist(self,x,y,z,vx,vy,vz)->float:
+        #获得点x y z在一个凸多面体内距离多个平面的平均距离（依据一个方向VX VY VZ）
         #ANGLE = 40
         halfspaces = self.__hpolys[self.__index]
         halfspaces = np.array(halfspaces)
@@ -60,8 +63,10 @@ class Hpolys:
         avg_dist = -np.average(dist)
         assert not np.isnan(avg_dist)
         return avg_dist
-    #判断是否在飞行走廊内，当前认为坐标系是世界坐标系
+    
+    
     def is_in_hpolys(self,x,y,z)->bool:
+        #RL相关 判断是否在飞行走廊内，当前认为坐标系是世界坐标系
         in_poly = False
         #logger.debug("Test if in convexhull")
         for index,halfspaces in enumerate(self.__hpolys):
@@ -93,17 +98,31 @@ class Quad:
         self.__reset()
         # current-> next waypoint
 
+        # 此处是 V = QUAD.P -> NEXT_WAYPOINT, 由无人机指向下一个waypoint的向量
         self.__nav_vector = np.ndarray(3)
 
+        # step控制如下的逻辑：
+        # 无人机模拟器有三种step方式
+        # 1. 与控制器异步，不进行同步（当前选择的是这种），现实中也是这种情况
+        # 2. 与控制器同步，只在控制器调用step后才进行step
+        # 3. 与控制器异步，但是可以被控制器暂停（pause）与恢复（unpause）step
         self.__quad_step = rospy.ServiceProxy("/quadrotor_simulator_so3/step", Empty)
         
+        # 发布控制命令
         self.__so3cmd_pub = rospy.Publisher("/so3_cmd",Control)
+        
+        # odom回调，无人机位置，姿态
         self.__odom_sub = rospy.Subscriber("/state_ukf/odom",Odometry,self.__update_odom_callback)
+        # imu 回调
         self.__imu_sub = rospy.Subscriber("/quadrotor_simulator_so3/imu",Imu,self.__update_imu_callback)
+
         #self.cloud_sub = rospy.Subscriber("/local_cloud",PointCloud2,self.cloudCallback)
+
+        # 实验，调用后随机规划一个路径，并获得对应的飞行走廊，以及每一个waypoints
         self.__sfc_srv = rospy.ServiceProxy("/hpoly_srv",Sfc)
 
     def get_state(self):
+        # 返回无人机滋生的状态
         assert self.__isinit,"Get when state is not inited"
         orientation = self.__odom.pose.pose.orientation
         twist = self.__odom.twist.twist
@@ -143,6 +162,7 @@ class Quad:
         command.type = command.THRUST_BODYRATE
         command.stamp = rospy.Time.now()
         return command
+    
     # srv callback
     def __update_sfc(self,res:SfcResponse):
         self.__sfc_res = res
@@ -153,6 +173,7 @@ class Quad:
         self.__goal_y = goal.y
         self.__goal_z = goal.z
         self.__update_state()
+    
     #odom callback
     def __update_odom_callback(self,msg:Odometry):
         self.__odom = msg
@@ -160,12 +181,14 @@ class Quad:
         self.__odom_y = self.__odom.pose.pose.position.y
         self.__odom_z = self.__odom.pose.pose.position.z
         self.__update_state()
+    
     #imu callback
     def __update_imu_callback(self,msg:Imu):
         self.__imu = msg
         self.__update_state()
 
     def __update_state(self)->None:
+        # 依据内部变量更新状态
         self.__isinit = self.__imu != None and self.__odom !=None and self.__sfc_res != None
         if(not self.__isinit):
             return
@@ -185,6 +208,7 @@ class Quad:
     def ready(self)->bool:
         return self.__isinit
 
+    # waypoint之间的距离
     def __dist_between_route(self,i:int,j:int)->float:
         assert self.__isinit,"Get when state is not inited"
         assert i>=0
@@ -195,14 +219,17 @@ class Quad:
         v = np.array([q.x-p.x,q.y-p.y,q.z-p.z])
         return np.sqrt(np.dot(v,v))
 
+    # 获得目标点的索引
     def get_goal_index(self)->int:
         assert self.__isinit,"Get when state is not inited"
         return len(self.__route)-1
 
+    # 获得当前waypoint点的索引
     def get_current_index(self)->int:
         assert self.__isinit,"Get when state is not inited"
         return self.__current_index
 
+    # 依据waypoint索引获得waypoint
     def get_waypoint(self,index:int)->Tuple[float,float,float]:
         assert self.__isinit,"Get when state is not inited"
         assert index >= 0 
@@ -219,6 +246,7 @@ class Quad:
         ori = self.__odom.pose.pose.orientation
         return (ori.x,ori.y,ori.z,ori.w)
     
+    #RL相关 此处获得 进度
     def get_current_progress(self)->Tuple[float,float]:
         #return [0,1]
         assert self.__isinit,"Get when state is not inited"
@@ -235,6 +263,7 @@ class Quad:
         return (quad_goal_dist,quad_waypoint_dist)
         return (goal_progress,waypoint_progress)
 
+    # 获得在sfc中的平均距离
     def get_current_sfc_dist(self)->float:
         assert self.__isinit,"Get when state is not inited"
         sfc_dist = self.__hpolys.get_avg_dist(self.__odom_x,self.__odom_y,self.__odom_z,self.__nav_vector[0],self.__nav_vector[1],self.__nav_vector[2])
@@ -259,6 +288,7 @@ class Quad:
         self.__so3cmd_pub.publish(self.__get_cmd(action))
         return
 
+    # RL相关 判断是否碰撞
     def observe_collision(self)->bool:
         wrold_box_min = np.array([-25,-25,0])
         wrold_box_max = np.array([25,25,5])
@@ -272,7 +302,8 @@ class Quad:
         # if crash:
         #     logger.warning("Crash detected")
         return out_poly or crash
-
+    
+    # RL相关 判断是否完成task
     def done(self)->bool:
         v = np.array([
             (self.__goal_x-self.__odom_x),

@@ -26,6 +26,7 @@ class CustomEnv(gym.Env):
         # Example for using image as input (channel-first; channel-last also works):
         self.observation_space = spaces.Box(low=-np.Infinity,high=np.Infinity,shape=(self.N_OBS,))
         
+        #此处是封装的与ROS相关的信息 
         self.quad = quad.Quad()
 
         self.info_dict = {}
@@ -61,6 +62,7 @@ class CustomEnv(gym.Env):
         pass
 
     def get_reward(self,action,terminated,truncated):
+        # 获得quadrotor的状态 计算reward
         if(terminated):
             return 10
         if(truncated):
